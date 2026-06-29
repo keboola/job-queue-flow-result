@@ -1,0 +1,6 @@
+jobs:
+  - template: ../../azure-pipelines/jobs/run-tests.yml
+    parameters:
+      displayName: Flow Result
+      serviceName: ci-flow-result
+      testCommand: vendor/bin/phpunit
