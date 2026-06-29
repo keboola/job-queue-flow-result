@@ -91,4 +91,26 @@ class FlowResultDocumentTest extends TestCase
 
         self::assertSame([], $doc->jsonSerialize()['tasks']);
     }
+
+    public function testStatusGettersReturnStatusOrNullWhenAbsent(): void
+    {
+        $doc = new FlowResultDocument([
+            'tasks' => [[
+                'id' => 't1',
+                'status' => 'processing',
+                'results' => [['jobId' => 'child-1', 'status' => 'created']],
+            ]],
+            'phases' => [['id' => 'p1', 'status' => 'success']],
+        ]);
+
+        self::assertSame('processing', $doc->getTaskStatus('t1'));
+        self::assertNull($doc->getTaskStatus('missing'));
+
+        self::assertSame('success', $doc->getPhaseStatus('p1'));
+        self::assertNull($doc->getPhaseStatus('missing'));
+
+        self::assertSame('created', $doc->getChildStatus('t1', 'child-1'));
+        self::assertNull($doc->getChildStatus('t1', 'missing-child'));
+        self::assertNull($doc->getChildStatus('missing-task', 'child-1'));
+    }
 }

@@ -26,13 +26,13 @@ class FlowResultDocument implements JsonSerializable
     /** @param array<string, mixed> $task */
     public function addTask(array $task): void
     {
-        $this->upsert('tasks', self::asString($task['id'] ?? ''), $task);
+        $this->upsert('tasks', $task);
     }
 
     /** @param array<string, mixed> $phase */
     public function addPhase(array $phase): void
     {
-        $this->upsert('phases', self::asString($phase['id'] ?? ''), $phase);
+        $this->upsert('phases', $phase);
     }
 
     /**
@@ -45,14 +45,14 @@ class FlowResultDocument implements JsonSerializable
     {
         /** @var array<int, array<string, mixed>> $tasks */
         $tasks = (array) ($this->document['tasks'] ?? []);
-        $taskIndex = $this->indexOf($tasks, $taskId);
+        $taskIndex = self::indexOf($tasks, 'id', $taskId);
         if ($taskIndex === null) {
             return;
         }
 
         /** @var array<int, array<string, mixed>> $children */
         $children = (array) ($tasks[$taskIndex]['results'] ?? []);
-        $childIndex = $this->indexOfChild($children, $childJobId);
+        $childIndex = self::indexOf($children, 'jobId', $childJobId);
 
         if ($childIndex === null) {
             $children[] = $childDelta;
@@ -76,19 +76,16 @@ class FlowResultDocument implements JsonSerializable
         return $this->document;
     }
 
-    /**
-     * Current status of a task entry (matched by id), or null when the task is absent. Lets a caller
-     * decide whether to advance an entry without re-implementing the lookup over the document structure.
-     */
+    /** Current status of a task entry (matched by id), or null when the task is absent. */
     public function getTaskStatus(string $id): ?string
     {
-        return $this->statusAt((array) ($this->document['tasks'] ?? []), $id);
+        return self::statusOf((array) ($this->document['tasks'] ?? []), 'id', $id);
     }
 
     /** Current status of a phase entry (matched by id), or null when the phase is absent. */
     public function getPhaseStatus(string $id): ?string
     {
-        return $this->statusAt((array) ($this->document['phases'] ?? []), $id);
+        return self::statusOf((array) ($this->document['phases'] ?? []), 'id', $id);
     }
 
     /** Current status of a child result inside a task's results[] (matched by jobId), or null when absent. */
@@ -96,28 +93,28 @@ class FlowResultDocument implements JsonSerializable
     {
         /** @var array<int, array<string, mixed>> $tasks */
         $tasks = (array) ($this->document['tasks'] ?? []);
-        $taskIndex = $this->indexOf($tasks, $taskId);
+        $taskIndex = self::indexOf($tasks, 'id', $taskId);
         if ($taskIndex === null) {
             return null;
         }
 
         /** @var array<int, array<string, mixed>> $children */
         $children = (array) ($tasks[$taskIndex]['results'] ?? []);
-        $childIndex = $this->indexOfChild($children, $childJobId);
-
-        return $childIndex === null ? null : self::statusValue($children[$childIndex]);
+        return self::statusOf($children, 'jobId', $childJobId);
     }
 
     /**
-     * Merge a delta into the existing entry with the same id, or insert it when absent.
+     * Merge a delta into the existing entry with the same id, or append it when absent.
      *
      * @param array<string, mixed> $entry
      */
-    private function upsert(string $key, string $id, array $entry): void
+    private function upsert(string $section, array $entry): void
     {
         /** @var array<int, array<string, mixed>> $entries */
-        $entries = (array) ($this->document[$key] ?? []);
-        $index = $this->indexOf($entries, $id);
+        $entries = (array) ($this->document[$section] ?? []);
+        /** @var string $id always present and a string in every delta produced by the result DTOs */
+        $id = $entry['id'];
+        $index = self::indexOf($entries, 'id', $id);
 
         if ($index !== null) {
             $entries[$index] = array_merge($entries[$index], $entry);
@@ -125,52 +122,34 @@ class FlowResultDocument implements JsonSerializable
             $entries[] = $entry;
         }
 
-        $this->document[$key] = array_values($entries);
+        $this->document[$section] = array_values($entries);
     }
 
-    /** @param array<mixed> $entries */
-    private function indexOf(array $entries, string $id): ?int
+    /**
+     * Index of the first entry whose $key equals $value, or null when none matches.
+     *
+     * @param array<mixed> $entries
+     */
+    private static function indexOf(array $entries, string $key, string $value): ?int
     {
         foreach ($entries as $index => $entry) {
-            if (is_array($entry) && self::asString($entry['id'] ?? '') === $id) {
+            if (is_array($entry) && ($entry[$key] ?? null) === $value) {
                 return (int) $index;
             }
         }
         return null;
     }
 
-    /** @param array<mixed> $children */
-    private function indexOfChild(array $children, string $childJobId): ?int
+    /**
+     * Status (as a string) of the first entry whose $key equals $value, or null when absent.
+     *
+     * @param array<mixed> $entries
+     */
+    private static function statusOf(array $entries, string $key, string $value): ?string
     {
-        foreach ($children as $index => $child) {
-            if (is_array($child) && self::asString($child['jobId'] ?? '') === $childJobId) {
-                return (int) $index;
-            }
-        }
-        return null;
-    }
-
-    /** @param array<mixed> $entries */
-    private function statusAt(array $entries, string $id): ?string
-    {
-        $index = $this->indexOf($entries, $id);
-        if ($index === null) {
-            return null;
-        }
-
-        $entry = $entries[$index];
-        return is_array($entry) ? self::statusValue($entry) : null;
-    }
-
-    /** @param array<string, mixed> $entry */
-    private static function statusValue(array $entry): ?string
-    {
-        $status = $entry['status'] ?? null;
+        $index = self::indexOf($entries, $key, $value);
+        $entry = $index === null ? null : $entries[$index];
+        $status = is_array($entry) ? ($entry['status'] ?? null) : null;
         return is_scalar($status) ? (string) $status : null;
-    }
-
-    private static function asString(mixed $value): string
-    {
-        return is_scalar($value) ? (string) $value : '';
     }
 }
