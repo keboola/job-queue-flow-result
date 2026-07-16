@@ -17,7 +17,7 @@
     },
     "require": {
         "php": "^8.2",
-        "keboola/job-queue-internal-api-php-client": "^25.6"
+        "keboola/job-queue-internal-api-php-client": "^25.6 || ^26.0 || ^27.0"
     },
     "require-dev": {
         "keboola/coding-standard": ">=15.0",
