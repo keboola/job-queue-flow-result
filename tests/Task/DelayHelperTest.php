@@ -13,10 +13,10 @@ use PHPUnit\Framework\TestCase;
 
 class DelayHelperTest extends TestCase
 {
-        /**
-     * @dataProvider computeDelayDataProvider
+    /**
+     * @dataProvider computeDelayFromTimestampsDataProvider
      */
-    public function testComputeDelay(
+    public function testComputeDelayFallsBackToTimestamps(
         ?DateTimeImmutable $createdTime,
         ?DateTimeImmutable $delayedStartTime,
         ?int $expectedResult,
@@ -24,16 +24,24 @@ class DelayHelperTest extends TestCase
         /** @var JobInterface&MockObject $job */
         $job = $this->createMock(JobInterface::class);
 
-        $job->method('getDelayedStartTime')
+        // Jobs created before the delay was persisted report null here.
+        $job->expects(self::once())
+            ->method('getRequestedDelay')
+            ->willReturn(null);
+
+        // Call counts depend on which branch the fallback takes, so these are value stubs.
+        $job->expects(self::any())
+            ->method('getDelayedStartTime')
             ->willReturn($delayedStartTime);
 
-        $job->method('getCreatedTime')
+        $job->expects(self::any())
+            ->method('getCreatedTime')
             ->willReturn($createdTime);
 
         self::assertSame($expectedResult, DelayHelper::computeDelay($job));
     }
 
-    public static function computeDelayDataProvider(): Generator
+    public static function computeDelayFromTimestampsDataProvider(): Generator
     {
         yield 'valid times with 5 minutes delay' => [
             'createdTime' => new DateTimeImmutable('2023-01-01T12:00:00+00:00'),
@@ -58,5 +66,36 @@ class DelayHelperTest extends TestCase
             'delayedStartTime' => null,
             'expectedResult' => null,
         ];
+    }
+
+    /**
+     * @dataProvider requestedDelayDataProvider
+     */
+    public function testComputeDelayPrefersRequestedDelay(int $requestedDelay): void
+    {
+        /** @var JobInterface&MockObject $job */
+        $job = $this->createMock(JobInterface::class);
+
+        $job->expects(self::once())
+            ->method('getRequestedDelay')
+            ->willReturn($requestedDelay);
+
+        // The persisted value wins outright; the timestamps are never consulted, so the
+        // reported delay no longer depends on two clocks agreeing.
+        $job->expects(self::never())
+            ->method('getDelayedStartTime');
+
+        $job->expects(self::never())
+            ->method('getCreatedTime');
+
+        self::assertSame($requestedDelay, DelayHelper::computeDelay($job));
+    }
+
+    public static function requestedDelayDataProvider(): Generator
+    {
+        yield 'five minutes' => [300];
+
+        // 0 is falsy but a legitimate persisted value and must not fall through to the timestamps.
+        yield 'no delay requested' => [0];
     }
 }
