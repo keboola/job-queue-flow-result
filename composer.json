@@ -17,7 +17,7 @@
     },
     "require": {
         "php": "^8.2",
-        "keboola/job-queue-internal-api-php-client": "^28.0"
+        "keboola/job-queue-internal-api-php-client": "dev-sykorajiri-AJDA-563-client"
     },
     "require-dev": {
         "keboola/coding-standard": ">=15.0",
